@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+
+<html>
+    
+    <head>
+        <title>Address Book</title>
+        
+        <link rel="stylesheet" type="text/css" href="css/sprite.css">
+        <link rel="stylesheet" type="text/css" href="css/style.css">
+        <script>
+            window.addEventListener('load', () => {
+                
+                window.indexedDB = window.indexedDB || window.mozIndexedDB || 	window.webkitIndexedDB || window.msIndexedDB;
+                if (!window.indexedDB) {
+                    showMessage("您的瀏覽器不支援indexedDB");
+                }
+            
+            
+            
+    
+            var db = null;
+            const dbName = "address_book";
+            const storeName = "contacts";
+            const version = 4;
+            
+
+            // let putBtn = document.getElementById('putBtn');
+            // let findBtn = document.getElementById('findBtn');
+            // let findDate = document.getElementById('findDate');
+    
+            ( 
+                function init() {
+                    var req = indexedDB.open(dbName, version);
+    
+                    req.onsuccess = (e) => {
+                        db = e.target.result;
+                        contactsList('', '');
+                    }
+    
+                    req.onerror = (e) => {
+                        console.log(e)
+                        showMessage("openDB error");
+                    }
+    
+                    req.onupgradeneeded = (e) => {
+                        var thisDB = e.target.result;
+                        
+                        
+                        if (!thisDB.objectStoreNames.contains(storeName)) {
+                            var objectStore = thisDB.createObjectStore(storeName, {keyPath: "id", autoIncrement: true});
+                            objectStore.createIndex("name", "name", {unique: false});
+                            objectStore.createIndex("tel", "tel", {unique: false});
+                            objectStore.createIndex("timestamp", "timestamp", {unique: false});
+                            
+                        
+                        }
+                        
+                        const contactsData = [
+                            {name: "u1", tel: "123456789", address: "a1", email: "u1@mail", memo: "m1", timestamp: new Date()},
+                            {name: "u2", tel: "123456789", address: "a2", email: "u2@mail", memo: "m2", timestamp: new Date()},
+                            {name: "u3", tel: "123456789", address: "a3", email: "u3@mail", memo: "m3", timestamp: new Date()},
+                        ];
+                        
+                        contactsData.forEach(function(user){		 
+                            objectStore.add(user);
+                        })
+                    }
+                    putBtn.style.display = "none";
+                    findBtn.style.display = "none";
+                    findDate.style.display = "none";
+
+                }
+            )();
+            
+            function showMessage(m) {
+                document.getElementById("msg").innerHTML = m;
+                setTimeout(() => {
+                    document.getElementById("msg").innerHTML = "";
+                }, 2000);
+            }
+
+            //開啟交易
+            function DB_tx(storeName, mode) {
+                let tx = db.transaction(storeName, mode);
+                tx.onerror = (e) => {
+                    console.error("tx", e);
+                };
+                return tx;
+            }
+    
+            function contactsList(find, findvalue) {
+                let ulist = document.getElementById("contacts");  
+                ulist.innerHTML = "載入中...";
+                let tx = DB_tx(storeName, 'readonly');
+                let store = tx.objectStore(storeName);
+                let allRecords = null;
+    
+                //判斷是搜尋或是完整資料列表
+                if (find != ""){             
+                    if(find=="timestamp"){   //當使用建立時間搜尋時
+                        let d = findvalue.split('|');			
+                        findvalue = IDBKeyRange.bound(new Date(d[0]), new Date(d[1]));
+                    }
+                    let index = store.index(find);    //依索引欄位搜尋
+                    allRecords = index.getAll(findvalue);   //取出搜尋到的全部資料
+                }else{
+                    allRecords = store.getAll();    //取出全部資料
+                }
+                
+                allRecords.onsuccess = (e) => {
+                let request = e.target;	
+                
+                //使用map和join方法合併字串
+                let contents = request.result.map((obj) => {
+                    return "<tr data-key="+obj.id+">\
+                        <td>"+obj.name+"</td>\
+                        <td>"+obj.tel+"</td>\
+                        <td>"+obj.address+"</td>\
+                        <td>"+obj.email+"</td>\
+                        <td>"+obj.memo+"</td>\
+                        <td>" + obj.timestamp.toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'}) + "</td>\
+                        <td><button class='modifyBtn smallBtn sprite sprite-edit'></button><button class='deleteBtn smallBtn sprite sprite-del'></button></td>\
+                    </tr>";
+                }).join('');
+                if (contents==""){
+                    ulist.innerHTML = "查無資料!"
+                }else{
+                    ulist.innerHTML = "<thead>\
+                        <tr>\
+                            <th>姓名</th>\
+                            <th>電話</th>\
+                            <th>地址</th>\
+                            <th>E-Mail</th>\
+                            <th>備註</th>\
+                            <th>建立日期</th>\
+                            <th>&nbsp;</th>\
+                        </tr>\
+                        </thead>\
+                        <tbody>"+contents+"</tbody>";			
+                }
+                };
+                allRecords.onerror = (e) => {
+                console.error("allRecords", e);
+                };
+            }
+            document.getElementById('newBtn').addEventListener('click', newData);
+            function newData(){
+                putBtn.style.display = "none";
+                addBtn.style.display = "inline";
+                findBtn.style.display = "none";
+                findDate.style.display = "none";
+                document.getElementById("showJob").innerHTML = "新增資料";
+
+                document.getElementById("contactForm").reset();
+
+            }
+            
+            document.getElementById('searchBtn').addEventListener('click', searchData);
+            function searchData(){
+                putBtn.style.display = "none";
+                addBtn.style.display = "none";
+                findBtn.style.display = "inline";
+                findDate.style.display = "block";
+                document.getElementById("showJob").innerHTML = "搜尋資料";
+
+                document.getElementById("contactForm").reset();
+
+            }
+
+            document.getElementById('addBtn').addEventListener('click', createAndUpdate);
+            document.getElementById('putBtn').addEventListener('click', createAndUpdate);
+            function createAndUpdate(e) {
+                e.preventDefault();
+                let tx = DB_tx(storeName, "readwrite");
+                tx.oncomplete = e => {
+                  contactsList('', '');  
+                };
+
+                let store = tx.objectStore(storeName);
+
+                let name = document.getElementById("name").value.trim();
+                let tel = document.getElementById("tel").value.trim();
+                let address = document.getElementById("address").value.trim();
+                let email = document.getElementById("email").value.trim();
+                let memo = document.getElementById("memo").value.trim();
+                let key_id = document.getElementById("idKey").value.trim();
+                let r = null;
+
+                if (key_id === "") {
+                    value = {
+                        name, tel, address, email, memo, timestamp: new Date()
+                    };
+                    
+
+                    r = store.add(value);
+
+                    r.onsuccess = (e) => {
+                        showMessage("資料新增成功!");
+                    }
+
+                    r.onerror = (e) => {
+                        showMessage("資料新增失敗!<br>" + e.target.error.message);
+                    }
+                } else {
+                    value = {
+                        id: Number(key_id), name, tel, address, email, memo, timestamp: new Date()
+                    };
+
+                    r = store.put(value);
+
+                    r.onsuccess = (e) => {
+                        showMessage("資料修改成功!");
+                    }
+
+                    r.onerror = (e) => {
+                        showMessage("資料修改失敗!<br>" + e.target.error.message);
+                    }
+
+
+                }
+            }
+            
+            document.getElementById('clearDataBtn').addEventListener('click', (e) => {	
+                e.preventDefault();
+                if (confirm("確定要清空全部資料?")){		
+                    deleteData();
+                }
+            });
+            function deleteData() {
+                let tx = DB_tx(storeName, 'readwrite');   //呼叫DB_tx函式開啟交易
+                let store = tx.objectStore(storeName);   //指定存儲物件
+                store.clear();    //清空資料
+                contactsList('','');   //呼叫contactsList函式顯示列表資料
+                showMessage("資料已清空!");    //呼叫showMessage函式顯示執行結果
+            }
+            
+            document.getElementById('clearDatabaseBtn').addEventListener('click', (e) => {
+                e.preventDefault();
+                if (confirm("確定要刪除資料庫?\n(刪除之後將重新載入頁面)")){		
+                    deleteDatabase();
+                    location.reload();
+                }
+            });
+            function deleteDatabase() {
+                let req = indexedDB.deleteDatabase(dbName);
+                req.onsuccess = (e) => {
+                    showMessage("資料庫已刪除!"); 
+                }; 
+                req.onerror = (e) => {
+                    showMessage("資料庫刪除失敗!<br>" + e.target.error.message); 
+                }
+            }
+
+            document.getElementById('contacts').addEventListener('click', (e) => {
+                e.preventDefault();
+                let target = e.target;
+
+                if (target.tagName.toLowerCase() === 'button') {
+                    let tr = target.closest('tr');
+                    let keyNo = parseInt(tr.dataset.key);
+
+                    if (target.classList.contains('modifyBtn')) {
+                        let tx = DB_tx(storeName, 'readonly');
+                        let store = tx.objectStore(storeName);
+                        let oneRecords = store.get(keyNo);
+                        oneRecords.onsuccess = (e) => {	
+                            let request = e.target; 
+                            let obj = request.result;
+                            
+                            document.getElementById('name').value = obj.name;
+                            document.getElementById('tel').value = obj.tel;
+                            document.getElementById('address').value = obj.address;
+                            document.getElementById('email').value = obj.email;
+                            document.getElementById('memo').value = obj.memo;
+                            document.getElementById('idKey').value = obj.id;
+                            
+                            //新增OK按鈕設為隱藏，修改OK按鈕設為顯示
+                            putBtn.style.display = 'inline';
+                            addBtn.style.display = 'none';
+                            document.getElementById('showJob').innerHTML = "修改資料";
+                        }
+                    }
+
+                    if (target.classList.contains('deleteBtn')) {
+                        if (confirm("確定要執行刪除?")){				
+                            let tx = DB_tx(storeName, 'readwrite');
+                            let store = tx.objectStore(storeName);
+                            let oneRecords = store.delete(keyNo);
+                            oneRecords.onsuccess = (e) => {	
+                                contactsList('','');
+                            }
+                            oneRecords.onerror = (e) => {
+                                showMessage("刪除失敗!<br>" + e.target.error.message);
+                            }
+                        }
+                    }
+
+                }
+            
+            })
+
+        })
+    
+        </script>
+    </head>
+    <body>
+        <fieldset>
+            <legend>個人通訊錄</legend>
+            <div style="float: right;">        
+                <button id="newBtn" class="smallBtn sprite sprite-search"></button><button id="searchBtn" class="smallBtn sprite sprite-add"></button>
+            </div>
+            <div>
+                <button id="clearDataBtn" class="btn">清空資料</button>
+                <button id="clearDatabaseBtn" class="btn">刪除資料庫</button>
+            </div>
+            <h3 id="showJob">新增資料</h3> <p id="msg" style="color:red;"></p>
+            <div>
+                <form id="contactForm">
+                    <label>姓名:</label><input type="text" title="姓名" id='name' class="userItem">
+                    <label>電話:</label><input type="text" title="電話" id='tel' class="userItem"><br>
+                    <label>地址:</label><input type="text" title="地址" id='address' class="userItem"><br>
+                    <label>Mail:</label><input type="text" title="Mail" id='email' class="userItem"><br>
+                    <label>備註:</label><input type="text" title="備註" id='memo' class="userItem"><br>
+                    <div id="findDate">
+                        <label for="timestamp">建立日期：<input type="date" id='startDate' value=""> ~ <input type="date" id='endDate' value="">
+                    </div>
+                    <input type="hidden" id='idKey' class="userItem">
+                    <button id="addBtn" class="btn">新增</button>
+                    <button id="putBtn" class="btn">修改</button>
+                    <button id="findBtn" class="btn">搜尋</button>
+                </form>
+            </div>
+            <div>
+                <table id="contacts">
+                    <!-- <caption>聯絡人</caption>
+                    <thead>
+                        <tr>
+                            <td>姓名</td>
+                            <td>電話</td>
+                            <td>地址</td>
+                            <td>E-Mail</td>
+                            <td>備註</td>
+                            <td>建立日期</td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>1</td>
+                            <td>1</td>
+                            <td>1</td>
+                            <td>1</td>
+                            <td>1</td>
+                            <td><button class="sprite sprite-edit"></button></td>
+                            <td><button class="sprite sprite-del"></button></td>
+                        </tr>
+                    </tbody> -->
+
+                </table>
+            </div>
+        </fieldset>
+    </body>
+    
+</html>

@@ -1,0 +1,30 @@
+/*CSS Sprites*/
+.sprite {
+   background-image: url(../images/icons.png);
+   background-repeat: no-repeat;
+   display: inline-block;
+}
+
+.sprite-add {
+    width: 35px;
+    height: 35px;
+    background-position: -3px -5px;
+}
+
+.sprite-del {
+    width: 35px;
+    height: 35px;
+    background-position: -48px -7px;
+}
+
+.sprite-edit {
+    width: 36px;
+    height: 36px;
+    background-position: -5px -48px;
+}
+
+.sprite-search {
+    width: 35px;
+    height: 35px;
+    background-position: -48px -48px;
+}
